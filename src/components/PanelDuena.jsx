@@ -43,15 +43,19 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
   const [imagenAmpliando, setImagenAmpliando] = useState(null)
   const [confirmacion, setConfirmacion] = useState(null)
 
-  // ==============================================
+ // ==============================================
   // ESTADOS Y REFERENCIAS PARA NOTIFICACIONES GERENCIALES
   // ==============================================
-  const [permisoNotificaciones, setPermisoNotificaciones] = useState(Notification.permission)
+  // ESCUDO 1: Protegemos el estado inicial para que no truene en celulares
+  const [permisoNotificaciones, setPermisoNotificaciones] = useState(
+    'Notification' in window ? Notification.permission : 'default'
+  )
   const notificacionesEnviadas = useRef(new Set())
 
   const solicitarPermisoNotificaciones = async () => {
+    // Esto lo tenías perfecto, si no hay soporte, se sale de la función y no pasa nada
     if (!("Notification" in window)) {
-      alert("Tu navegador no soporta notificaciones de escritorio.")
+      alert("Tu navegador en celular no soporta notificaciones de escritorio, pero verás los cambios en pantalla.")
       return
     }
     const permiso = await Notification.requestPermission()
@@ -157,15 +161,21 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
       audio.play().catch(() => {});
 
       if (hayPendientes) {
-        new Notification("¡Requiere tu Autorización! ⚖️", { 
-          body: "Han ingresado nuevos tickets. Revísalos para liberar el corte."
-        });
+        // ESCUDO 2
+        if ('Notification' in window) {
+          new Notification("¡Requiere tu Autorización! ⚖️", { 
+            body: "Han ingresado nuevos tickets. Revísalos para liberar el corte."
+          });
+        }
       }
 
       if (hayRetrasosCriticos) {
-        new Notification("🚨 ¡RETRASO CRÍTICO EN TALLER!", { 
-          body: "Foco rojo: Tienes material atorado en producción por más de 2 horas."
-        });
+        // ESCUDO 3
+        if ('Notification' in window) {
+          new Notification("🚨 ¡RETRASO CRÍTICO EN TALLER!", { 
+            body: "Foco rojo: Tienes material atorado en producción por más de 2 horas."
+          });
+        }
       }
     }
   }, [pedidosActivos, horaActual, permisoNotificaciones]);
