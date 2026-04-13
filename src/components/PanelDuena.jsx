@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
- 
+
 // ✅ CORRECCIÓN #1: URL centralizada — si cambia el dominio, se edita en UN solo lugar
 const API_URL = 'https://aceros-backend-production.up.railway.app'
- 
+
 function PanelDuena({ usuarioActual, onCerrarSesion }) {
   const [pedidos, setPedidos] = useState([])
   const [sucursales, setSucursales] = useState([])
@@ -10,28 +10,28 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
   const [cargando, setCargando] = useState(false)
   const [vistaActiva, setVistaActiva] = useState('pedidos')
   const [horaActual, setHoraActual] = useState(new Date())
- 
+
   // Reloj visual (cada segundo)
   useEffect(() => {
     const intervalo = setInterval(() => setHoraActual(new Date()), 1000)
     return () => clearInterval(intervalo)
   }, [])
- 
+
   // Estados de Control
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState(null)
   const [pedidoDetalle, setPedidoDetalle] = useState(null)
   const [decision, setDecision] = useState('Aprobado')
   const [sucursalDestino, setSucursalDestino] = useState('')
   const [procesando, setProcesando] = useState(false)
- 
+
   const [creandoUsuario, setCreandoUsuario] = useState(false)
   const [nuevoEmpleado, setNuevoEmpleado] = useState({ nombre_completo: '', username: '', password: '', rol: 'ventas', sucursal_id: '' })
   const [creandoSucursal, setCreandoSucursal] = useState(false)
   const [nuevaSucursal, setNuevaSucursal] = useState({ nombre: '', direccion: '', telefono: '', tiene_produccion: false })
- 
+
   const [empleadoEditando, setEmpleadoEditando] = useState(null)
   const [sucursalEditando, setSucursalEditando] = useState(null)
- 
+
   const [mostrarTraspaso, setMostrarTraspaso] = useState(false)
   const [archivoTraspaso, setArchivoTraspaso] = useState(null)
   const [nombreArchivoTraspaso, setNombreArchivoTraspaso] = useState('Ningún archivo seleccionado')
@@ -39,10 +39,16 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
   const [destinoTraspaso, setDestinoTraspaso] = useState('')
   const [notasTraspaso, setNotasTraspaso] = useState('')
   const [enviandoTraspaso, setEnviandoTraspaso] = useState(false)
- 
+
   const [imagenAmpliando, setImagenAmpliando] = useState(null)
   const [confirmacion, setConfirmacion] = useState(null)
- 
+
+  // ==============================================
+  // BANNER VISUAL DE ALERTAS (funciona en todos los celulares)
+  // ==============================================
+  const [alertaBanner, setAlertaBanner] = useState(null)
+  // alertaBanner = { tipo: 'pendiente' | 'retraso', cantidad: N } | null
+
   // ==============================================
   // NOTIFICACIONES GERENCIALES
   // ==============================================
@@ -50,9 +56,9 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     'Notification' in window ? Notification.permission : 'default'
   )
   const notificacionesEnviadas = useRef(new Set())
-  // ✅ CORRECCIÓN #2: Ref para el audio — evita recrearlo en cada render
+  // ✅ Ref para el audio — evita recrearlo en cada render
   const audioRef = useRef(null)
- 
+
   const solicitarPermisoNotificaciones = async () => {
     if (!('Notification' in window)) {
       alert('Tu navegador en celular no soporta notificaciones de escritorio, pero verás los cambios en pantalla.')
@@ -66,7 +72,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
       })
     }
   }
- 
+
   // ✅ CORRECCIÓN #4: useCallback para no recrear la función en cada render
   const obtenerDatosIniciales = useCallback(async () => {
     setCargando(true)
@@ -93,7 +99,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     }
     setCargando(false)
   }, [])
- 
+
   // ✅ CORRECCIÓN #6: vistaActiva eliminada de las dependencias — el intervalo
   // ya no se reinicia al cambiar de pestaña
   useEffect(() => {
@@ -101,12 +107,12 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     const intervaloDatos = setInterval(obtenerDatosIniciales, 60000)
     return () => clearInterval(intervaloDatos)
   }, [obtenerDatosIniciales])
- 
+
   const getNombreSucursal = (id) => {
     const suc = sucursales.find(s => s.id === parseInt(id))
     return suc ? suc.nombre : (id ? `Sucursal ${id}` : 'Por asignar')
   }
- 
+
   const formatearFechaYHora = (fechaIso) => {
     if (!fechaIso) return 'Fecha desconocida'
     const fecha = fechaIso.endsWith('Z') ? new Date(fechaIso) : new Date(fechaIso + 'Z')
@@ -116,7 +122,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
       hour: '2-digit', minute: '2-digit', hour12: true
     })
   }
- 
+
   const obtenerTiempoTranscurrido = (fecha_aprobacion) => {
     if (!fecha_aprobacion) return '00:00:00'
     const inicio = new Date(fecha_aprobacion.endsWith('Z') ? fecha_aprobacion : fecha_aprobacion + 'Z')
@@ -126,7 +132,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     const s = Math.floor((diff % 60000) / 1000)
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
- 
+
   // ✅ CORRECCIÓN #5: useMemo — los filtros no se recalculan en cada render
   const pedidosActivos = useMemo(
     () => pedidos.filter(p => p.estado !== 'Entregado' && p.estado !== 'Rechazado'),
@@ -136,23 +142,19 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     () => pedidos.filter(p => p.estado === 'Entregado' || p.estado === 'Rechazado'),
     [pedidos]
   )
- 
+
   // ==============================================
-  // ✅ CORRECCIÓN #2: MOTOR DE VIGILANCIA — audio fuera del ciclo del reloj
-  // El efecto ya NO depende de horaActual para el audio
+  // MOTOR DE VIGILANCIA — banner visual + audio + notificación navegador
   // ==============================================
   useEffect(() => {
-    if (permisoNotificaciones !== 'granted') return
- 
     let hayPendientes = false
     let hayRetrasosCriticos = false
- 
+
     pedidosActivos.forEach(pedido => {
       if (pedido.estado === 'Pendiente' && !notificacionesEnviadas.current.has(`${pedido.id}-pendiente`)) {
         hayPendientes = true
         notificacionesEnviadas.current.add(`${pedido.id}-pendiente`)
       }
- 
       if ((pedido.estado === 'Aprobado' || pedido.estado === 'En_Produccion') && pedido.fecha_aprobacion) {
         const inicio = new Date(pedido.fecha_aprobacion.endsWith('Z') ? pedido.fecha_aprobacion : pedido.fecha_aprobacion + 'Z')
         const diffHrs = Math.floor((new Date() - inicio) / (1000 * 60 * 60))
@@ -162,28 +164,38 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
         }
       }
     })
- 
+
     if (hayPendientes || hayRetrasosCriticos) {
-      // ✅ Audio solo cuando hay eventos nuevos, no cada segundo
+      // Audio
       if (!audioRef.current) {
         audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')
       }
       audioRef.current.play().catch(() => {})
- 
-      if (hayPendientes && 'Notification' in window) {
-        new Notification('¡Requiere tu Autorización! ⚖️', {
-          body: 'Han ingresado nuevos tickets. Revísalos para liberar el corte.'
-        })
+
+      // Banner visual — funciona en todos los celulares sin permisos
+      const pendientesCount = pedidosActivos.filter(p => p.estado === 'Pendiente').length
+      if (hayRetrasosCriticos) {
+        setAlertaBanner({ tipo: 'retraso', cantidad: pendientesCount })
+      } else if (hayPendientes) {
+        setAlertaBanner({ tipo: 'pendiente', cantidad: pendientesCount })
       }
-      if (hayRetrasosCriticos && 'Notification' in window) {
-        new Notification('🚨 ¡RETRASO CRÍTICO EN TALLER!', {
-          body: 'Foco rojo: Tienes material atorado en producción por más de 2 horas.'
-        })
+
+      // Notificación navegador (funciona en desktop y Android Chrome)
+      if (permisoNotificaciones === 'granted') {
+        if (hayPendientes && 'Notification' in window) {
+          new Notification('¡Requiere tu Autorización! ⚖️', {
+            body: 'Han ingresado nuevos tickets. Revísalos para liberar el corte.'
+          })
+        }
+        if (hayRetrasosCriticos && 'Notification' in window) {
+          new Notification('🚨 ¡RETRASO CRÍTICO EN TALLER!', {
+            body: 'Foco rojo: Tienes material atorado en producción por más de 2 horas.'
+          })
+        }
       }
     }
-  // ✅ Solo depende de pedidosActivos y el permiso — NO de horaActual
   }, [pedidosActivos, permisoNotificaciones])
- 
+
   const historialAgrupadoPorFecha = useMemo(() =>
     pedidosHistorial.reduce((grupos, pedido) => {
       const fecha = pedido.fecha_creacion
@@ -195,12 +207,12 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     }, {}),
     [pedidosHistorial]
   )
- 
+
   const handleFileTraspaso = (e) => {
     const file = e.target.files[0]
     if (file) { setArchivoTraspaso(file); setNombreArchivoTraspaso(file.name) }
   }
- 
+
   const generarTraspaso = async (e) => {
     e.preventDefault()
     if (!archivoTraspaso) return alert('Por favor sube la foto del inventario o vale de salida.')
@@ -226,7 +238,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     } catch (error) { alert('Error de conexión.') }
     setEnviandoTraspaso(false)
   }
- 
+
   const ejecutarAprobacion = async () => {
     setProcesando(true)
     const datosAprobacion = {
@@ -242,7 +254,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     } catch (e) { alert('❌ Error de conexión') }
     setProcesando(false)
   }
- 
+
   const registrarSucursal = async (e) => {
     e.preventDefault(); setCreandoSucursal(true)
     try {
@@ -256,7 +268,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     } catch (e) { alert('❌ Error al conectar') }
     setCreandoSucursal(false)
   }
- 
+
   const actualizarSucursal = async (e) => {
     e.preventDefault()
     try {
@@ -266,7 +278,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
       if (res.ok) { setSucursalEditando(null); obtenerDatosIniciales() }
     } catch (e) { alert('❌ Error') }
   }
- 
+
   const registrarEmpleado = async (e) => {
     e.preventDefault(); setCreandoUsuario(true)
     try {
@@ -281,7 +293,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     } catch (e) { alert('❌ Error') }
     setCreandoUsuario(false)
   }
- 
+
   const actualizarEmpleado = async (e) => {
     e.preventDefault()
     const datosAMandar = { ...empleadoEditando }
@@ -293,7 +305,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
       if (res.ok) { setEmpleadoEditando(null); obtenerDatosIniciales() }
     } catch (e) { alert('❌ Error') }
   }
- 
+
   const intentarCerrarSesion = () => {
     setConfirmacion({ titulo: '¿Cerrar Sesión?', mensaje: '¿Estás segura de que deseas salir del Panel de Gerencia?', textoBoton: 'Sí, Salir', colorBoton: 'bg-red-600 hover:bg-red-700', accion: onCerrarSesion })
   }
@@ -338,9 +350,9 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
       accion: () => { setConfirmacion(null); ejecutarAprobacion() }
     })
   }
- 
+
   const iconosRoles = { 'ventas': '📝 Ventas', 'produccion': '⚙️ Producción', 'logistica': '🚚 Logística', 'duena': '⚖️ Admin' }
- 
+
   // ✅ CORRECCIÓN #11: Lógica de estadísticas extraída del JSX
   const estadisticas = useMemo(() => {
     const entregadosDelMes = pedidosHistorial.filter(p => {
@@ -359,19 +371,19 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     }).length
     const totalFinalizados = totalEntregados + rechazadosDelMes
     const tasaCierreVentas = totalFinalizados > 0 ? ((totalEntregados / totalFinalizados) * 100).toFixed(0) : 0
- 
+
     const ventasPorSucursal = entregadosDelMes.reduce((acc, p) => {
       const sucId = parseInt(p.sucursal_id); acc[sucId] = (acc[sucId] || 0) + 1; return acc
     }, {})
     const rankingVentas = Object.entries(ventasPorSucursal).sort(([, a], [, b]) => b - a).slice(0, 5)
     const maxVentasSucursal = rankingVentas.length > 0 ? rankingVentas[0][1] : 1
- 
+
     const cortesPorTaller = entregadosDelMes.filter(p => p.requiere_produccion && p.sucursal_destino_id).reduce((acc, p) => {
       const tallerId = parseInt(p.sucursal_destino_id); acc[tallerId] = (acc[tallerId] || 0) + 1; return acc
     }, {})
     const rankingTrabajoTaller = Object.entries(cortesPorTaller).sort(([, a], [, b]) => b - a).slice(0, 5)
     const maxCortesTaller = rankingTrabajoTaller.length > 0 ? rankingTrabajoTaller[0][1] : 1
- 
+
     const tiemposSucursal = entregadosDelMes.filter(p => p.fecha_aprobacion && p.estado === 'Entregado').reduce((acc, p) => {
       const sucId = parseInt(p.sucursal_id)
       if (!acc[sucId]) acc[sucId] = { sum: 0, count: 0 }
@@ -381,24 +393,24 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
       if (diffMs > 0) { acc[sucId].sum += diffMs; acc[sucId].count += 1 }
       return acc
     }, {})
- 
+
     const eficienciaGrid = Object.entries(tiemposSucursal).map(([sucId, { sum, count }]) => {
       const avgTimeMs = sum / count
       const avgTimeHrs = Math.floor(avgTimeMs / (1000 * 60 * 60))
       return { sucId: parseInt(sucId), avgTimeHrs }
     }).sort((a, b) => a.avgTimeHrs - b.avgTimeHrs).slice(0, 10)
- 
+
     const tendenciaDiaria = entregadosDelMes.reduce((acc, p) => {
       const dia = new Date(p.fecha_creacion).getDate(); acc[dia] = (acc[dia] || 0) + 1; return acc
     }, {})
- 
+
     return { totalEntregados, totalTraspasosMes, tasaCierreVentas, rankingVentas, maxVentasSucursal, rankingTrabajoTaller, maxCortesTaller, eficienciaGrid, tendenciaDiaria }
   }, [pedidosHistorial])
- 
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6 md:p-8 relative text-gray-950">
       <div className="max-w-7xl mx-auto">
- 
+
         {/* Barra Superior Gerencial */}
         <div className="bg-slate-800 rounded-2xl shadow-xl p-5 sm:p-6 flex flex-col sm:flex-row gap-5 justify-between items-center mb-6">
           <div className="flex flex-col items-center sm:items-start w-full justify-center sm:justify-start">
@@ -411,7 +423,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
               <span className="bg-slate-700 text-slate-300 text-xs font-bold px-3 py-1.5 rounded-full shadow-inner whitespace-nowrap"> Sistema Operativo Maestro </span>
             </div>
           </div>
- 
+
           <div className="flex items-center gap-4 w-full sm:w-auto justify-between border-t border-slate-700 pt-5 sm:border-0 sm:pt-0 shrink-0">
             {permisoNotificaciones !== 'granted' && (
               <button
@@ -430,7 +442,47 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
             <button onClick={intentarCerrarSesion} className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-5 rounded-xl transition active:scale-95 text-sm shadow-md whitespace-nowrap"> Cerrar Sesión </button>
           </div>
         </div>
- 
+
+        {/* =========================================
+            BANNER DE ALERTAS VISUALES (funciona en todos los celulares)
+            ========================================= */}
+        {alertaBanner && (
+          <div className={`mb-4 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-lg animate-in slide-in-from-top-2 ${alertaBanner.tipo === 'retraso' ? 'bg-red-600 text-white' : 'bg-yellow-400 text-yellow-950'}`}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl shrink-0">{alertaBanner.tipo === 'retraso' ? '🚨' : '⚠️'}</span>
+              <div>
+                {alertaBanner.tipo === 'retraso' ? (
+                  <>
+                    <p className="font-extrabold text-sm leading-tight">¡Retraso Crítico en Taller!</p>
+                    <p className="text-xs font-medium opacity-90 mt-0.5">Hay material atorado en producción por más de 2 horas.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-extrabold text-sm leading-tight">
+                      {alertaBanner.cantidad === 1 ? '1 pedido espera tu autorización' : `${alertaBanner.cantidad} pedidos esperan tu autorización`}
+                    </p>
+                    <p className="text-xs font-medium opacity-80 mt-0.5">Revísalos en la pestaña de Pedidos Activos.</p>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => { setAlertaBanner(null); setVistaActiva('pedidos') }}
+                className={`font-bold text-xs px-3 py-2 rounded-xl min-h-[44px] transition active:scale-95 ${alertaBanner.tipo === 'retraso' ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-yellow-950/20 hover:bg-yellow-950/30 text-yellow-950'}`}
+              >
+                Ver ahora
+              </button>
+              <button
+                onClick={() => setAlertaBanner(null)}
+                className={`font-bold text-lg px-3 py-2 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center transition active:scale-95 ${alertaBanner.tipo === 'retraso' ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-yellow-950/20 hover:bg-yellow-950/30 text-yellow-950'}`}
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ✅ CORRECCIÓN #10: Menú con scroll visible en móvil */}
         <div className="flex gap-2 sm:gap-4 mb-8 bg-white p-2 rounded-xl border border-gray-200 shadow-sm overflow-x-auto scrollbar-thin">
           {[
@@ -449,7 +501,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
             </button>
           ))}
         </div>
- 
+
         {/* =========================================
             VISTA 1: PEDIDOS ACTIVOS
             ========================================= */}
@@ -547,7 +599,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
             )}
           </div>
         )}
- 
+
         {/* =========================================
             VISTA 2: HISTORIAL
             ========================================= */}
@@ -604,7 +656,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
             )}
           </div>
         )}
- 
+
         {/* =========================================
             VISTA 3: ESTADÍSTICAS
             ========================================= */}
@@ -636,7 +688,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
                 <p className="text-[10px] text-gray-500 font-medium text-center border-t border-gray-100 pt-3 mt-5">Total de pedidos cerrados con éxito</p>
               </div>
             </div>
- 
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-white border-2 border-slate-800 rounded-3xl p-6 shadow-inner">
                 <h4 className="text-base font-black text-slate-900 uppercase tracking-wider mb-6 pb-3 border-b border-gray-100">🏆 Ranking de Ventas por Sucursal (Unidades)</h4>
@@ -679,7 +731,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
                 </div>
               </div>
             </div>
- 
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-slate-800 border-2 border-slate-950 rounded-3xl p-6 shadow-xl">
                 <h4 className="text-base font-black text-white uppercase tracking-widest mb-6 pb-3 border-b border-slate-700 flex items-center gap-2"><span>🔍</span> Inteligencia de Negocio: Eficiencia en Taller</h4>
@@ -709,7 +761,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
             </div>
           </div>
         )}
- 
+
         {/* =========================================
             VISTAS 4 y 5: PERSONAL Y SUCURSALES
             ========================================= */}
@@ -760,7 +812,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
             </div>
           </div>
         )}
- 
+
         {vistaActiva === 'sucursales' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in">
             <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-8 border border-gray-100">
@@ -786,7 +838,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
                 ))}
               </div>
             </div>
- 
+
             <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-8 border border-gray-100 h-fit">
               <h2 className="text-xl font-bold text-gray-950 mb-6 border-b pb-4">Alta de Sucursal</h2>
               <form onSubmit={registrarSucursal} className="space-y-5">
@@ -812,11 +864,11 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         )}
       </div>
- 
+
       {/* ==============================================
           MODALES
           ============================================== */}
- 
+
       {/* ✅ CORRECCIÓN #3: overscrollBehavior para evitar problemas con teclado en móvil */}
       {mostrarTraspaso && (
         <div className="fixed inset-0 bg-gray-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in">
@@ -864,7 +916,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         </div>
       )}
- 
+
       {pedidoSeleccionado && (
         <div className="fixed inset-0 bg-gray-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in">
           <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden max-h-[90vh] flex flex-col">
@@ -911,7 +963,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         </div>
       )}
- 
+
       {pedidoDetalle && (
         <div className="fixed inset-0 bg-gray-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in">
           <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
@@ -958,7 +1010,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         </div>
       )}
- 
+
       {empleadoEditando && (
         <div className="fixed inset-0 bg-gray-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -989,7 +1041,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         </div>
       )}
- 
+
       {sucursalEditando && (
         <div className="fixed inset-0 bg-gray-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -1022,7 +1074,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         </div>
       )}
- 
+
       {imagenAmpliando && (
         <div className="fixed inset-0 bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 z-[100] animate-in zoom-in duration-200">
           <button onClick={() => setImagenAmpliando(null)} className="absolute top-4 right-4 sm:top-8 sm:right-8 text-white bg-gray-800 hover:bg-gray-700 rounded-full w-12 h-12 flex items-center justify-center text-3xl font-bold transition shadow-xl active:scale-95 min-h-[44px] min-w-[44px]">
@@ -1031,7 +1083,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           <img src={imagenAmpliando} alt="Ticket Ampliado" className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl border border-gray-800" />
         </div>
       )}
- 
+
       {confirmacion && (
         <div className="fixed inset-0 bg-gray-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[200] animate-in zoom-in duration-200">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden text-center p-8">
@@ -1047,9 +1099,9 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         </div>
       )}
- 
+
     </div>
   )
 }
- 
+
 export default PanelDuena
