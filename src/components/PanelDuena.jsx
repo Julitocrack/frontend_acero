@@ -906,7 +906,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-800 mb-2 ml-1">📝 ¿Qué material se mueve?</label>
-                <textarea value={notasTraspaso} onChange={(e) => setNotasTraspaso(e.target.value)} className="w-full border border-gray-200 rounded-2xl p-4 text-gray-950 text-sm bg-white placeholder:text-gray-400 focus:ring-2 focus:ring-purple-200 transition resize-none h-20 outline-none" placeholder="Ej. 10 Bultos de cemento, 5 armex..." required></textarea>
+                <textarea value={notasTraspaso} onChange={(e) => setNotasTraspaso(e.target.value)} className="w-full border border-gray-200 rounded-2xl p-4 text-gray-950 text-sm bg-white placeholder:text-gray-400 focus:ring-2 focus:ring-purple-200 transition resize-none h-20 outline-none" placeholder="Describe el material..." required></textarea>
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
                 <button type="button" onClick={() => setMostrarTraspaso(false)} className="w-full sm:w-auto px-6 py-3.5 bg-gray-100 hover:bg-gray-200 rounded-xl font-semibold text-gray-700 min-h-[44px]">Cancelar</button>
