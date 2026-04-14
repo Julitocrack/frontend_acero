@@ -606,7 +606,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
         {vistaActiva === 'historial' && (
           <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-6 md:p-8 border border-gray-100 animate-in fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-              <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900">Historial de Pedidos Finalizados</h2>
+              <h2 className="text-xl sm:text-2xl font-extrabold" style={{WebkitFontSmoothing: 'antialiased', color: '#111827'}}>Historial de Pedidos Finalizados</h2>
               <button onClick={obtenerDatosIniciales} className="w-full sm:w-auto text-center text-sm bg-gray-100 text-gray-700 px-5 py-3 rounded-xl hover:bg-gray-200 transition font-semibold min-h-[44px]">↻ Actualizar Historial</button>
             </div>
             {Object.keys(historialAgrupadoPorFecha).length === 0 ? (
@@ -768,7 +768,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
         {vistaActiva === 'personal' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in">
             <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-8 border border-gray-100">
-              <h2 className="text-xl font-bold text-gray-950 mb-6 border-b pb-4">Personal Activo</h2>
+              <h2 className="text-xl font-extrabold" style={{WebkitFontSmoothing: 'antialiased', color: '#111827'}}>Personal Activo</h2>
               <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                 {empleados.map(emp => (
                   <div key={emp.id} className="p-4 border border-gray-200 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all flex justify-between items-center gap-2">
@@ -787,7 +787,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
               </div>
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-8 border border-gray-100 h-fit">
-              <h2 className="text-xl font-bold text-gray-950 mb-6 border-b pb-4">Alta de Personal</h2>
+              <h2 className="text-xl font-extrabold" style={{WebkitFontSmoothing: 'antialiased', color: '#111827'}}>Alta de Personal</h2>
               <form onSubmit={registrarEmpleado} className="space-y-5">
                 {/* ✅ CORRECCIÓN #7: autoComplete correcto en cada input */}
                 <input type="text" value={nuevoEmpleado.nombre_completo} onChange={(e) => setNuevoEmpleado({ ...nuevoEmpleado, nombre_completo: e.target.value })} autoComplete="name" className="w-full border p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-blue-100" placeholder="Nombre Completo" required />
@@ -816,7 +816,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
         {vistaActiva === 'sucursales' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in">
             <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-8 border border-gray-100">
-              <h2 className="text-xl font-bold text-gray-950 mb-6 border-b pb-4">Sucursales Activas</h2>
+              <h2 className="text-xl font-extrabold" style={{WebkitFontSmoothing: 'antialiased', color: '#111827'}}>Sucursales Activas</h2>
               <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                 {sucursales.map(suc => (
                   <div key={suc.id} className="p-4 border border-gray-200 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all flex justify-between items-center gap-4">
@@ -840,7 +840,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
             </div>
 
             <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-8 border border-gray-100 h-fit">
-              <h2 className="text-xl font-bold text-gray-950 mb-6 border-b pb-4">Alta de Sucursal</h2>
+              <h2 className="text-xl font-extrabold" style={{WebkitFontSmoothing: 'antialiased', color: '#111827'}}>Alta de Sucursal</h2>
               <form onSubmit={registrarSucursal} className="space-y-5">
                 <input type="text" value={nuevaSucursal.nombre} onChange={(e) => setNuevaSucursal({ ...nuevaSucursal, nombre: e.target.value })} autoComplete="organization" className="w-full border p-3.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-blue-100" placeholder="Nombre Comercial" required />
                 <div className="grid grid-cols-2 gap-4">

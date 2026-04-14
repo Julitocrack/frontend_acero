@@ -224,7 +224,7 @@ function PanelProduccion({ usuarioActual, onCerrarSesion }) {
         {/* Cola de Cortes */}
         <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-6 md:p-8 border border-gray-100 animate-in fade-in">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-            <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900">Cola de Cortes Pendientes</h2>
+            <h2 className="text-xl sm:text-2xl font-extrabold" style={{WebkitFontSmoothing: 'antialiased', color: '#111827'}}>Cola de Cortes Pendientes</h2>
             <button onClick={obtenerDatos} className="w-full sm:w-auto text-center text-sm bg-gray-100 text-gray-700 px-5 py-3 rounded-xl hover:bg-gray-200 transition font-semibold min-h-[44px]">↻ Actualizar Lista</button>
           </div>
 
