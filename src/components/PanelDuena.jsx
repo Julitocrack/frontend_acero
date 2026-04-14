@@ -508,7 +508,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
         {vistaActiva === 'pedidos' && (
           <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-6 md:p-8 border border-gray-100 animate-in fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-950">Control de Pedidos en Curso</h2>
+              <h2 className="text-xl sm:text-2xl font-bold text-black">Control de Pedidos en Curso</h2>
               <div className="flex gap-3 w-full sm:w-auto">
                 <button onClick={obtenerDatosIniciales} className="flex-1 sm:flex-none text-center text-sm bg-gray-100 text-gray-700 px-5 py-3 rounded-xl hover:bg-gray-200 transition font-semibold min-h-[44px]"> ↻ Actualizar </button>
                 <button onClick={() => setMostrarTraspaso(true)} className="flex-1 sm:flex-none text-center text-sm bg-purple-600 text-white px-5 py-3 rounded-xl font-bold shadow-md min-h-[44px]"> 📦 Nuevo Traspaso </button>
