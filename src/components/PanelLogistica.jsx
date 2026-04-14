@@ -209,7 +209,7 @@ function PanelLogistica({ usuarioActual, onCerrarSesion }) {
         {/* Entregas Pendientes */}
         <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-6 md:p-8 border border-gray-100 animate-in fade-in relative">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-950">Entregas y Cargas Pendientes</h2>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900">Entregas y Cargas Pendientes</h2>
             <button onClick={obtenerDatos} className="w-full sm:w-auto text-center text-sm bg-gray-100 text-gray-700 px-5 py-3 rounded-xl hover:bg-gray-200 transition font-semibold shadow-sm min-h-[44px]">↻ Actualizar Rutas</button>
           </div>
 

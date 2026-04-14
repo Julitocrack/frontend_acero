@@ -234,7 +234,7 @@ function PanelVentas({ usuarioActual, onCerrarSesion }) {
           >+</button>
 
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-950">
+            <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900">
               {vistaActiva === 'activas' ? 'Seguimiento de Material' : 'Registro Histórico'}
             </h2>
             <div className="flex gap-3 w-full sm:w-auto">
