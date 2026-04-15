@@ -396,7 +396,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     }, {})
 
     const eficienciaGrid = Object.entries(tiemposSucursal).map(([sucId, { sum, count }]) => {
-      const avgTimeMs = sum / count
+      const avgTimeMs = count > 0 ? (sum / count) : 0;
       const avgTimeHrs = Math.floor(avgTimeMs / (1000 * 60 * 60))
       return { sucId: parseInt(sucId), avgTimeHrs }
     }).sort((a, b) => a.avgTimeHrs - b.avgTimeHrs).slice(0, 10)
