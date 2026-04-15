@@ -387,6 +387,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     const tiemposSucursal = entregadosDelMes.filter(p => p.fecha_aprobacion && p.estado === 'Entregado').reduce((acc, p) => {
       const sucId = parseInt(p.sucursal_id)
       if (!acc[sucId]) acc[sucId] = { sum: 0, count: 0 }
+      if (!p.fecha_actualizacion) return acc;
       const fin = new Date(p.fecha_actualizacion.endsWith('Z') ? p.fecha_actualizacion : p.fecha_actualizacion + 'Z')
       const ini = new Date(p.fecha_aprobacion.endsWith('Z') ? p.fecha_aprobacion : p.fecha_aprobacion + 'Z')
       const diffMs = fin - ini
