@@ -3,6 +3,11 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 // ✅ CORRECCIÓN #1: URL centralizada — si cambia el dominio, se edita en UN solo lugar
 const API_URL = 'https://aceros-backend-production.up.railway.app'
 
+// 🆕 El OCR para traspasos vive en el backend (igual que analizar-ticket en panel de ventas).
+// Endpoint: POST ${API_URL}/pedidos/leer-traspaso
+// Body: FormData con campo "foto"
+// Respuesta: { texto: "..." }
+
 function PanelDuena({ usuarioActual, onCerrarSesion }) {
   const [pedidos, setPedidos] = useState([])
   const [sucursales, setSucursales] = useState([])
@@ -40,6 +45,12 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
   const [notasTraspaso, setNotasTraspaso] = useState('')
   const [enviandoTraspaso, setEnviandoTraspaso] = useState(false)
 
+  // 🆕 Estados nuevos para OCR
+  const [leyendoOCR, setLeyendoOCR] = useState(false)
+  const [previewTraspaso, setPreviewTraspaso] = useState(null) // URL temporal para preview
+  const inputCamaraRef = useRef(null)   // Para abrir cámara trasera
+  const inputGaleriaRef = useRef(null)  // Para escoger de galería
+
   const [imagenAmpliando, setImagenAmpliando] = useState(null)
   const [confirmacion, setConfirmacion] = useState(null)
 
@@ -47,7 +58,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
   // BANNER VISUAL DE ALERTAS (funciona en todos los celulares)
   // ==============================================
   const [alertaBanner, setAlertaBanner] = useState(null)
-  // alertaBanner = { tipo: 'pendiente' | 'retraso', cantidad: N } | null
 
   // ==============================================
   // NOTIFICACIONES GERENCIALES
@@ -56,7 +66,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     'Notification' in window ? Notification.permission : 'default'
   )
   const notificacionesEnviadas = useRef(new Set())
-  // ✅ Ref para el audio — evita recrearlo en cada render
   const audioRef = useRef(null)
 
   const solicitarPermisoNotificaciones = async () => {
@@ -73,7 +82,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     }
   }
 
-  // ✅ CORRECCIÓN #4: useCallback para no recrear la función en cada render
   const obtenerDatosIniciales = useCallback(async () => {
     setCargando(true)
     try {
@@ -87,7 +95,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
       if (resSucursales.ok) {
         const listaSucs = await resSucursales.json()
         setSucursales(listaSucs)
-        // ✅ CORRECCIÓN #13: Preselección de sucursal desacoplada de la carga de datos
         if (listaSucs.length > 0) {
           setNuevoEmpleado(prev =>
             prev.sucursal_id ? prev : { ...prev, sucursal_id: listaSucs[0].id }
@@ -100,13 +107,18 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     setCargando(false)
   }, [])
 
-  // ✅ CORRECCIÓN #6: vistaActiva eliminada de las dependencias — el intervalo
-  // ya no se reinicia al cambiar de pestaña
   useEffect(() => {
     obtenerDatosIniciales()
     const intervaloDatos = setInterval(obtenerDatosIniciales, 60000)
     return () => clearInterval(intervaloDatos)
   }, [obtenerDatosIniciales])
+
+  // 🆕 Limpiar el preview blob URL cuando se cierra el modal o se cambia archivo
+  useEffect(() => {
+    return () => {
+      if (previewTraspaso) URL.revokeObjectURL(previewTraspaso)
+    }
+  }, [previewTraspaso])
 
   const getNombreSucursal = (id) => {
     const suc = sucursales.find(s => s.id === parseInt(id))
@@ -133,7 +145,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
-  // ✅ CORRECCIÓN #5: useMemo — los filtros no se recalculan en cada render
   const pedidosActivos = useMemo(
     () => pedidos.filter(p => p.estado !== 'Entregado' && p.estado !== 'Rechazado'),
     [pedidos]
@@ -166,13 +177,11 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     })
 
     if (hayPendientes || hayRetrasosCriticos) {
-      // Audio
       if (!audioRef.current) {
         audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')
       }
       audioRef.current.play().catch(() => {})
 
-      // Banner visual — funciona en todos los celulares sin permisos
       const pendientesCount = pedidosActivos.filter(p => p.estado === 'Pendiente').length
       if (hayRetrasosCriticos) {
         setAlertaBanner({ tipo: 'retraso', cantidad: pendientesCount })
@@ -180,7 +189,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
         setAlertaBanner({ tipo: 'pendiente', cantidad: pendientesCount })
       }
 
-      // Notificación navegador (funciona en desktop y Android Chrome)
       if (permisoNotificaciones === 'granted') {
         if (hayPendientes && 'Notification' in window) {
           new Notification('¡Requiere tu Autorización! ⚖️', {
@@ -208,14 +216,70 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     [pedidosHistorial]
   )
 
+  // ==============================================
+  // 🆕 NUEVA LÓGICA: Manejo de archivo + OCR
+  // ==============================================
+  const procesarArchivoTraspaso = (file) => {
+    if (!file) return
+    // Limpiar preview anterior si existe
+    if (previewTraspaso) URL.revokeObjectURL(previewTraspaso)
+    setArchivoTraspaso(file)
+    setNombreArchivoTraspaso(file.name)
+    setPreviewTraspaso(URL.createObjectURL(file))
+  }
+
   const handleFileTraspaso = (e) => {
     const file = e.target.files[0]
-    if (file) { setArchivoTraspaso(file); setNombreArchivoTraspaso(file.name) }
+    if (file) procesarArchivoTraspaso(file)
+  }
+
+  // 🆕 Leer material con IA — llama al backend (que internamente usa Gemini)
+  const leerMaterialConIA = async () => {
+    if (!archivoTraspaso) {
+      alert('Primero toma o sube una foto del vale.')
+      return
+    }
+    setLeyendoOCR(true)
+    try {
+      const formData = new FormData()
+      formData.append('foto', archivoTraspaso)
+      const res = await fetch(`${API_URL}/pedidos/leer-traspaso`, {
+        method: 'POST',
+        body: formData
+      })
+      if (!res.ok) {
+        throw new Error(`El servidor no respondió correctamente (${res.status})`)
+      }
+      const data = await res.json()
+      const textoLimpio = (data.texto || '').trim()
+      if (!textoLimpio) {
+        alert('La IA no logró leer texto en la foto. Intenta con una foto más clara o escribe el material manualmente.')
+      } else {
+        setNotasTraspaso(prev =>
+          prev ? `${prev}\n\n--- Lectura IA ---\n${textoLimpio}` : textoLimpio
+        )
+      }
+    } catch (err) {
+      console.error('Error OCR backend:', err)
+      alert(`No se pudo leer la foto: ${err.message}`)
+    }
+    setLeyendoOCR(false)
+  }
+
+  const cerrarModalTraspaso = () => {
+    setMostrarTraspaso(false)
+    setArchivoTraspaso(null)
+    setNombreArchivoTraspaso('Ningún archivo seleccionado')
+    setNotasTraspaso('')
+    setOrigenTraspaso('')
+    setDestinoTraspaso('')
+    if (previewTraspaso) URL.revokeObjectURL(previewTraspaso)
+    setPreviewTraspaso(null)
   }
 
   const generarTraspaso = async (e) => {
     e.preventDefault()
-    if (!archivoTraspaso) return alert('Por favor sube la foto del inventario o vale de salida.')
+    if (!archivoTraspaso) return alert('Por favor toma o sube la foto del inventario o vale de salida.')
     if (origenTraspaso === destinoTraspaso) return alert('La sucursal de origen y destino no pueden ser la misma.')
     setEnviandoTraspaso(true)
     const formData = new FormData()
@@ -230,9 +294,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     try {
       const respuesta = await fetch(`${API_URL}/pedidos/`, { method: 'POST', body: formData })
       if (respuesta.ok) {
-        setMostrarTraspaso(false); setArchivoTraspaso(null)
-        setNombreArchivoTraspaso('Ningún archivo seleccionado')
-        setNotasTraspaso(''); setOrigenTraspaso(''); setDestinoTraspaso('')
+        cerrarModalTraspaso()
         obtenerDatosIniciales()
       } else alert('Error al generar el traspaso.')
     } catch (error) { alert('Error de conexión.') }
@@ -353,7 +415,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
 
   const iconosRoles = { 'ventas': '📝 Ventas', 'produccion': '⚙️ Producción', 'logistica': '🚚 Logística', 'duena': '⚖️ Admin' }
 
-  // ✅ CORRECCIÓN #11: Lógica de estadísticas extraída del JSX
   const estadisticas = useMemo(() => {
     const entregadosDelMes = pedidosHistorial.filter(p => {
       if (!p.fecha_creacion) return false
@@ -444,9 +505,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         </div>
 
-        {/* =========================================
-            BANNER DE ALERTAS VISUALES (funciona en todos los celulares)
-            ========================================= */}
+        {/* BANNER DE ALERTAS VISUALES */}
         {alertaBanner && (
           <div className={`mb-4 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-lg animate-in slide-in-from-top-2 ${alertaBanner.tipo === 'retraso' ? 'bg-red-600 text-white' : 'bg-yellow-400 text-yellow-950'}`}>
             <div className="flex items-center gap-3">
@@ -484,7 +543,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         )}
 
-        {/* ✅ CORRECCIÓN #10: Menú con scroll visible en móvil */}
         <div className="flex gap-2 sm:gap-4 mb-8 bg-white p-2 rounded-xl border border-gray-200 shadow-sm overflow-x-auto scrollbar-thin">
           {[
             { id: 'pedidos', label: '📋 Pedidos Activos' },
@@ -503,9 +561,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           ))}
         </div>
 
-        {/* =========================================
-            VISTA 1: PEDIDOS ACTIVOS
-            ========================================= */}
+        {/* VISTA 1: PEDIDOS ACTIVOS */}
         {vistaActiva === 'pedidos' && (
           <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-6 md:p-8 border border-gray-100 animate-in fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
@@ -528,7 +584,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8">
                 {pedidosActivos.map((pedido) => (
                   <div key={pedido.id} className={`bg-white rounded-2xl overflow-hidden shadow-sm transition-all duration-300 flex flex-col animate-in slide-in-from-bottom-2 ${pedido.estado === 'Pendiente' ? 'border-yellow-400 border-2 ring-4 ring-yellow-50' : (pedido.tipo_orden === 'Traspaso' ? 'border-purple-300 border-2 shadow-inner bg-purple-50' : 'border-slate-800 border-2 shadow-inner bg-slate-50/50')}`}>
-                    {/* ✅ CORRECCIÓN #8: loading="lazy" en imágenes */}
                     <div onClick={() => setImagenAmpliando(pedido.url_foto_ticket)} className="h-48 bg-gray-100 overflow-hidden relative group cursor-pointer border-b border-gray-200 shrink-0">
                       <img src={pedido.url_foto_ticket} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Ticket" />
                       <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition duration-300">
@@ -601,9 +656,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         )}
 
-        {/* =========================================
-            VISTA 2: HISTORIAL
-            ========================================= */}
+        {/* VISTA 2: HISTORIAL */}
         {vistaActiva === 'historial' && (
           <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-6 md:p-8 border border-gray-100 animate-in fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
@@ -621,7 +674,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                     {historialAgrupadoPorFecha[fecha].map((pedido) => (
                       <div key={pedido.id} className="bg-slate-50/50 border-2 border-slate-800 rounded-2xl overflow-hidden shadow-inner hover:shadow-md transition-all flex flex-col">
-                        {/* ✅ CORRECCIÓN #8: loading="lazy" en imágenes de historial */}
                         <div onClick={() => setImagenAmpliando(pedido.url_foto_ticket)} className="h-32 bg-gray-200 overflow-hidden relative group cursor-pointer border-b-2 border-slate-800 shrink-0">
                           <img src={pedido.url_foto_ticket} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Ticket" />
                           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
@@ -658,9 +710,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         )}
 
-        {/* =========================================
-            VISTA 3: ESTADÍSTICAS
-            ========================================= */}
+        {/* VISTA 3: ESTADÍSTICAS */}
         {vistaActiva === 'estadisticas' && (
           <div className="space-y-8 animate-in fade-in">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
@@ -763,9 +813,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           </div>
         )}
 
-        {/* =========================================
-            VISTAS 4 y 5: PERSONAL Y SUCURSALES
-            ========================================= */}
+        {/* VISTAS 4 y 5: PERSONAL Y SUCURSALES */}
         {vistaActiva === 'personal' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in">
             <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-8 border border-gray-100">
@@ -778,7 +826,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
                       <p className="text-sm text-gray-500">@{emp.username} • {iconosRoles[emp.rol]}</p>
                       <p className="text-xs font-semibold text-blue-600 mt-1">{getNombreSucursal(emp.sucursal_id)}</p>
                     </div>
-                    {/* ✅ CORRECCIÓN #9: Botones con tamaño mínimo 44px para touch */}
                     <div className="flex flex-col gap-2 shrink-0">
                       <button onClick={() => setEmpleadoEditando(emp)} className="min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition" title="Editar">✏️</button>
                       <button onClick={() => intentarEliminarEmpleado(emp)} className="min-h-[44px] min-w-[44px] flex items-center justify-center bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition" title="Eliminar">🗑️</button>
@@ -790,7 +837,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
             <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-8 border border-gray-100 h-fit">
               <h2 className="text-xl font-extrabold" style={{WebkitFontSmoothing: 'antialiased', color: '#111827'}}>Alta de Personal</h2>
               <form onSubmit={registrarEmpleado} className="space-y-5">
-                {/* ✅ CORRECCIÓN #7: autoComplete correcto en cada input */}
                 <input type="text" value={nuevoEmpleado.nombre_completo} onChange={(e) => setNuevoEmpleado({ ...nuevoEmpleado, nombre_completo: e.target.value })} autoComplete="name" className="w-full border p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-blue-100" placeholder="Nombre Completo" required />
                 <div className="grid grid-cols-2 gap-4">
                   <input type="text" value={nuevoEmpleado.username} onChange={(e) => setNuevoEmpleado({ ...nuevoEmpleado, username: e.target.value })} autoComplete="username" inputMode="text" className="w-full border p-3 rounded-xl bg-gray-50 outline-none" placeholder="Usuario" required />
@@ -830,7 +876,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
                       </div>
                       <p className="text-sm text-gray-500 mt-1">📍 {suc.direccion || 'Sin dirección'} | 📞 {suc.telefono || 'Sin teléfono'}</p>
                     </div>
-                    {/* ✅ CORRECCIÓN #9: Botones touch-friendly */}
                     <div className="flex flex-col gap-2 shrink-0">
                       <button onClick={() => setSucursalEditando(suc)} className="min-h-[44px] min-w-[44px] flex items-center justify-center bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition" title="Editar">✏️</button>
                       <button onClick={() => intentarEliminarSucursal(suc)} className="min-h-[44px] min-w-[44px] flex items-center justify-center bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition" title="Eliminar">🗑️</button>
@@ -846,7 +891,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
                 <input type="text" value={nuevaSucursal.nombre} onChange={(e) => setNuevaSucursal({ ...nuevaSucursal, nombre: e.target.value })} autoComplete="organization" className="w-full border p-3.5 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-blue-100" placeholder="Nombre Comercial" required />
                 <div className="grid grid-cols-2 gap-4">
                   <input type="text" value={nuevaSucursal.direccion} onChange={(e) => setNuevaSucursal({ ...nuevaSucursal, direccion: e.target.value })} autoComplete="street-address" className="w-full border p-3.5 rounded-xl bg-gray-50 outline-none" placeholder="Dirección (Opcional)" />
-                  {/* ✅ CORRECCIÓN #7: inputMode="tel" para teclado numérico en móvil */}
                   <input type="text" value={nuevaSucursal.telefono} onChange={(e) => setNuevaSucursal({ ...nuevaSucursal, telefono: e.target.value })} inputMode="tel" autoComplete="tel" className="w-full border p-3.5 rounded-xl bg-gray-50 outline-none" placeholder="Teléfono (Opcional)" />
                 </div>
                 <label className="flex items-center justify-between gap-4 p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition">
@@ -870,25 +914,119 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           MODALES
           ============================================== */}
 
-      {/* ✅ CORRECCIÓN #3: overscrollBehavior para evitar problemas con teclado en móvil */}
+      {/* 🆕 MODAL DE TRASPASO — REDISEÑADO con cámara nativa + OCR */}
       {mostrarTraspaso && (
         <div className="fixed inset-0 bg-gray-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in">
           <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="bg-purple-800 p-5 flex justify-between items-center text-white shrink-0">
               <h3 className="font-extrabold text-xl sm:text-2xl flex items-center gap-2">📦 Movimiento de Inventario</h3>
-              <button onClick={() => setMostrarTraspaso(false)} className="text-purple-300 hover:text-white text-3xl font-bold min-h-[44px] min-w-[44px] flex items-center justify-center">&times;</button>
+              <button onClick={cerrarModalTraspaso} className="text-purple-300 hover:text-white text-3xl font-bold min-h-[44px] min-w-[44px] flex items-center justify-center">&times;</button>
             </div>
             <form onSubmit={generarTraspaso} className="p-5 sm:p-8 space-y-6 overflow-y-auto overscroll-contain">
+
+              {/* 🆕 INPUTS OCULTOS — uno con cámara, otro con galería */}
+              <input
+                ref={inputCamaraRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileTraspaso}
+                className="hidden"
+              />
+              <input
+                ref={inputGaleriaRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileTraspaso}
+                className="hidden"
+              />
+
+              {/* 🆕 ZONA DE FOTO — con preview + dos botones (cámara/galería) */}
               <div>
                 <label className="block text-sm font-semibold text-gray-800 mb-2 ml-1">Vale de salida o evidencia</label>
-                <div className="relative group border-2 border-dashed border-gray-200 rounded-2xl hover:border-purple-400 hover:bg-purple-50 transition p-1">
-                  <input type="file" accept="image/*" onChange={handleFileTraspaso} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" required />
-                  <div className="p-4 sm:p-6 text-center flex flex-col items-center justify-center gap-3">
-                    <span className="text-4xl group-hover:scale-110 transition-transform">📸</span>
-                    <p className="text-gray-900 font-semibold text-sm break-all">{nombreArchivoTraspaso}</p>
+
+                {previewTraspaso ? (
+                  // Si ya hay foto, mostramos el preview
+                  <div className="relative rounded-2xl overflow-hidden border-2 border-purple-200 bg-gray-50">
+                    <img src={previewTraspaso} alt="Preview vale" className="w-full max-h-64 object-contain bg-gray-100" />
+                    <div className="p-3 bg-white border-t border-gray-100 flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={() => inputCamaraRef.current?.click()}
+                        className="flex-1 bg-purple-100 hover:bg-purple-200 text-purple-900 font-bold py-2.5 rounded-xl transition min-h-[44px] flex items-center justify-center gap-2 text-sm"
+                      >
+                        🔄 Tomar otra
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (previewTraspaso) URL.revokeObjectURL(previewTraspaso)
+                          setPreviewTraspaso(null)
+                          setArchivoTraspaso(null)
+                          setNombreArchivoTraspaso('Ningún archivo seleccionado')
+                        }}
+                        className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2.5 rounded-xl transition min-h-[44px] flex items-center justify-center gap-2 text-sm"
+                      >
+                        🗑️ Quitar
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  // Si NO hay foto, mostramos los dos botones grandes
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => inputCamaraRef.current?.click()}
+                      className="border-2 border-dashed border-purple-300 hover:border-purple-500 hover:bg-purple-50 rounded-2xl p-5 flex flex-col items-center justify-center gap-2 transition active:scale-95 min-h-[120px]"
+                    >
+                      <span className="text-4xl">📸</span>
+                      <span className="font-bold text-purple-900 text-sm">Tomar foto</span>
+                      <span className="text-[11px] text-gray-500">Abre la cámara</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => inputGaleriaRef.current?.click()}
+                      className="border-2 border-dashed border-gray-300 hover:border-gray-500 hover:bg-gray-50 rounded-2xl p-5 flex flex-col items-center justify-center gap-2 transition active:scale-95 min-h-[120px]"
+                    >
+                      <span className="text-4xl">🖼️</span>
+                      <span className="font-bold text-gray-700 text-sm">De galería</span>
+                      <span className="text-[11px] text-gray-500">Buscar en el celular</span>
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {/* 🆕 BOTÓN DE OCR — solo aparece cuando ya hay foto */}
+              {archivoTraspaso && (
+                <div className="bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-200 rounded-2xl p-4">
+                  <div className="flex items-start gap-3 mb-3">
+                    <span className="text-2xl">🤖</span>
+                    <div className="flex-1">
+                      <p className="font-extrabold text-blue-900 text-sm leading-tight">Lectura inteligente</p>
+                      <p className="text-xs text-blue-700 font-medium mt-0.5">La IA puede leer tu nota y rellenar el material automáticamente.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={leerMaterialConIA}
+                    disabled={leyendoOCR}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow transition min-h-[44px] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-wait"
+                  >
+                    {leyendoOCR ? (
+                      <>
+                        <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        <span className="text-sm">✨ La IA está leyendo...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🤖</span>
+                        <span className="text-sm">Leer material con IA</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold mb-2 ml-1">📤 De (Origen):</label>
@@ -907,11 +1045,12 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-800 mb-2 ml-1">📝 ¿Qué material se mueve?</label>
-                <textarea value={notasTraspaso} onChange={(e) => setNotasTraspaso(e.target.value)} className="w-full border border-gray-200 rounded-2xl p-4 text-gray-950 text-sm bg-white placeholder:text-gray-400 focus:ring-2 focus:ring-purple-200 transition resize-none h-20 outline-none" placeholder="Describe el material..." required></textarea>
+                <textarea value={notasTraspaso} onChange={(e) => setNotasTraspaso(e.target.value)} className="w-full border border-gray-200 rounded-2xl p-4 text-gray-950 text-sm bg-white placeholder:text-gray-400 focus:ring-2 focus:ring-purple-200 transition resize-none h-32 outline-none" placeholder="Describe el material o usa el botón de lectura con IA arriba..." required></textarea>
+                <p className="text-[11px] text-gray-500 mt-1.5 ml-1">💡 Tip: puedes editar lo que la IA leyó si tiene errores.</p>
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                <button type="button" onClick={() => setMostrarTraspaso(false)} className="w-full sm:w-auto px-6 py-3.5 bg-gray-100 hover:bg-gray-200 rounded-xl font-semibold text-gray-700 min-h-[44px]">Cancelar</button>
-                <button type="submit" disabled={enviandoTraspaso} className="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold shadow transition min-h-[44px]">{enviandoTraspaso ? 'Generando...' : '🚚 Enviar a Logística'}</button>
+                <button type="button" onClick={cerrarModalTraspaso} className="w-full sm:w-auto px-6 py-3.5 bg-gray-100 hover:bg-gray-200 rounded-xl font-semibold text-gray-700 min-h-[44px]">Cancelar</button>
+                <button type="submit" disabled={enviandoTraspaso || leyendoOCR} className="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold shadow transition min-h-[44px] disabled:opacity-50">{enviandoTraspaso ? 'Generando...' : '🚚 Enviar a Logística'}</button>
               </div>
             </form>
           </div>
@@ -1054,7 +1193,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
               <input type="text" value={sucursalEditando.nombre} onChange={e => setSucursalEditando({ ...sucursalEditando, nombre: e.target.value })} autoComplete="organization" className="w-full border p-3 rounded-xl outline-none" placeholder="Nombre Comercial" required />
               <div className="grid grid-cols-2 gap-3">
                 <input type="text" value={sucursalEditando.direccion || ''} onChange={e => setSucursalEditando({ ...sucursalEditando, direccion: e.target.value })} autoComplete="street-address" className="w-full border p-3 rounded-xl outline-none" placeholder="Dirección" />
-                {/* ✅ CORRECCIÓN #7: inputMode="tel" para teclado numérico en móvil */}
                 <input type="text" value={sucursalEditando.telefono || ''} onChange={e => setSucursalEditando({ ...sucursalEditando, telefono: e.target.value })} inputMode="tel" autoComplete="tel" className="w-full border p-3 rounded-xl outline-none" placeholder="Teléfono" />
               </div>
               <label className="flex items-center justify-between gap-4 p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition">
