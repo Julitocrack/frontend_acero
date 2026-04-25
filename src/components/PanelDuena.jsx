@@ -1,28 +1,23 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
-// ✅ CORRECCIÓN #1: URL centralizada — si cambia el dominio, se edita en UN solo lugar
+// ✅ URL centralizada
 const API_URL = 'https://aceros-backend-production.up.railway.app'
-
-// 🆕 El OCR para traspasos vive en el backend (igual que analizar-ticket en panel de ventas).
-// Endpoint: POST ${API_URL}/pedidos/leer-traspaso
-// Body: FormData con campo "foto"
-// Respuesta: { texto: "..." }
 
 function PanelDuena({ usuarioActual, onCerrarSesion }) {
   const [pedidos, setPedidos] = useState([])
   const [sucursales, setSucursales] = useState([])
   const [empleados, setEmpleados] = useState([])
   const [cargando, setCargando] = useState(false)
-  const [vistaActiva, setVistaActiva] = useState('pedidos')
+  
+  // 🆕 Ahora la vista por defecto es la de pendientes
+  const [vistaActiva, setVistaActiva] = useState('pendientes')
   const [horaActual, setHoraActual] = useState(new Date())
 
-  // Reloj visual (cada segundo)
   useEffect(() => {
     const intervalo = setInterval(() => setHoraActual(new Date()), 1000)
     return () => clearInterval(intervalo)
   }, [])
 
-  // Estados de Control
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState(null)
   const [pedidoDetalle, setPedidoDetalle] = useState(null)
   const [decision, setDecision] = useState('Aprobado')
@@ -45,23 +40,15 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
   const [notasTraspaso, setNotasTraspaso] = useState('')
   const [enviandoTraspaso, setEnviandoTraspaso] = useState(false)
 
-  // 🆕 Estados nuevos para OCR
   const [leyendoOCR, setLeyendoOCR] = useState(false)
-  const [previewTraspaso, setPreviewTraspaso] = useState(null) // URL temporal para preview
-  const inputCamaraRef = useRef(null)   // Para abrir cámara trasera
-  const inputGaleriaRef = useRef(null)  // Para escoger de galería
+  const [previewTraspaso, setPreviewTraspaso] = useState(null)
+  const inputCamaraRef = useRef(null)
+  const inputGaleriaRef = useRef(null)
 
   const [imagenAmpliando, setImagenAmpliando] = useState(null)
   const [confirmacion, setConfirmacion] = useState(null)
-
-  // ==============================================
-  // BANNER VISUAL DE ALERTAS (funciona en todos los celulares)
-  // ==============================================
   const [alertaBanner, setAlertaBanner] = useState(null)
 
-  // ==============================================
-  // NOTIFICACIONES GERENCIALES
-  // ==============================================
   const [permisoNotificaciones, setPermisoNotificaciones] = useState(
     'Notification' in window ? Notification.permission : 'default'
   )
@@ -113,7 +100,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     return () => clearInterval(intervaloDatos)
   }, [obtenerDatosIniciales])
 
-  // 🆕 Limpiar el preview blob URL cuando se cierra el modal o se cambia archivo
   useEffect(() => {
     return () => {
       if (previewTraspaso) URL.revokeObjectURL(previewTraspaso)
@@ -145,8 +131,15 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
-  const pedidosActivos = useMemo(
-    () => pedidos.filter(p => p.estado !== 'Entregado' && p.estado !== 'Rechazado'),
+  // ==============================================
+  // 🆕 NUEVO: Filtros separados para Pendientes y En Curso
+  // ==============================================
+  const pedidosPendientes = useMemo(
+    () => pedidos.filter(p => p.estado === 'Pendiente'),
+    [pedidos]
+  )
+  const pedidosEnCurso = useMemo(
+    () => pedidos.filter(p => p.estado !== 'Pendiente' && p.estado !== 'Entregado' && p.estado !== 'Rechazado'),
     [pedidos]
   )
   const pedidosHistorial = useMemo(
@@ -154,18 +147,20 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     [pedidos]
   )
 
-  // ==============================================
-  // MOTOR DE VIGILANCIA — banner visual + audio + notificación navegador
-  // ==============================================
   useEffect(() => {
     let hayPendientes = false
     let hayRetrasosCriticos = false
 
-    pedidosActivos.forEach(pedido => {
-      if (pedido.estado === 'Pendiente' && !notificacionesEnviadas.current.has(`${pedido.id}-pendiente`)) {
+    // Vigilamos los pendientes
+    pedidosPendientes.forEach(pedido => {
+      if (!notificacionesEnviadas.current.has(`${pedido.id}-pendiente`)) {
         hayPendientes = true
         notificacionesEnviadas.current.add(`${pedido.id}-pendiente`)
       }
+    })
+
+    // Vigilamos los que están en taller
+    pedidosEnCurso.forEach(pedido => {
       if ((pedido.estado === 'Aprobado' || pedido.estado === 'En_Produccion') && pedido.fecha_aprobacion) {
         const inicio = new Date(pedido.fecha_aprobacion.endsWith('Z') ? pedido.fecha_aprobacion : pedido.fecha_aprobacion + 'Z')
         const diffHrs = Math.floor((new Date() - inicio) / (1000 * 60 * 60))
@@ -182,33 +177,26 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
       }
       audioRef.current.play().catch(() => {})
 
-      const pendientesCount = pedidosActivos.filter(p => p.estado === 'Pendiente').length
       if (hayRetrasosCriticos) {
-        setAlertaBanner({ tipo: 'retraso', cantidad: pendientesCount })
+        setAlertaBanner({ tipo: 'retraso', cantidad: pedidosPendientes.length })
       } else if (hayPendientes) {
-        setAlertaBanner({ tipo: 'pendiente', cantidad: pendientesCount })
+        setAlertaBanner({ tipo: 'pendiente', cantidad: pedidosPendientes.length })
       }
 
       if (permisoNotificaciones === 'granted') {
         if (hayPendientes && 'Notification' in window) {
-          new Notification('¡Requiere tu Autorización! ⚖️', {
-            body: 'Han ingresado nuevos tickets. Revísalos para liberar el corte.'
-          })
+          new Notification('¡Requiere tu Autorización! ⚖️', { body: 'Han ingresado nuevos tickets. Revísalos para liberar el corte.' })
         }
         if (hayRetrasosCriticos && 'Notification' in window) {
-          new Notification('🚨 ¡RETRASO CRÍTICO EN TALLER!', {
-            body: 'Foco rojo: Tienes material atorado en producción por más de 2 horas.'
-          })
+          new Notification('🚨 ¡RETRASO CRÍTICO EN TALLER!', { body: 'Foco rojo: Tienes material atorado en producción por más de 2 horas.' })
         }
       }
     }
-  }, [pedidosActivos, permisoNotificaciones])
+  }, [pedidosPendientes, pedidosEnCurso, permisoNotificaciones])
 
   const historialAgrupadoPorFecha = useMemo(() =>
     pedidosHistorial.reduce((grupos, pedido) => {
-      const fecha = pedido.fecha_creacion
-        ? new Date(pedido.fecha_creacion).toLocaleDateString()
-        : 'Registros Anteriores'
+      const fecha = pedido.fecha_creacion ? new Date(pedido.fecha_creacion).toLocaleDateString() : 'Registros Anteriores'
       if (!grupos[fecha]) grupos[fecha] = []
       grupos[fecha].push(pedido)
       return grupos
@@ -216,12 +204,8 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     [pedidosHistorial]
   )
 
-  // ==============================================
-  // 🆕 NUEVA LÓGICA: Manejo de archivo + OCR
-  // ==============================================
   const procesarArchivoTraspaso = (file) => {
     if (!file) return
-    // Limpiar preview anterior si existe
     if (previewTraspaso) URL.revokeObjectURL(previewTraspaso)
     setArchivoTraspaso(file)
     setNombreArchivoTraspaso(file.name)
@@ -233,31 +217,20 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     if (file) procesarArchivoTraspaso(file)
   }
 
-  // 🆕 Leer material con IA — llama al backend (que internamente usa Gemini)
   const leerMaterialConIA = async () => {
-    if (!archivoTraspaso) {
-      alert('Primero toma o sube una foto del vale.')
-      return
-    }
+    if (!archivoTraspaso) { alert('Primero toma o sube una foto del vale.'); return }
     setLeyendoOCR(true)
     try {
       const formData = new FormData()
       formData.append('foto', archivoTraspaso)
-      const res = await fetch(`${API_URL}/pedidos/leer-traspaso`, {
-        method: 'POST',
-        body: formData
-      })
-      if (!res.ok) {
-        throw new Error(`El servidor no respondió correctamente (${res.status})`)
-      }
+      const res = await fetch(`${API_URL}/pedidos/leer-traspaso`, { method: 'POST', body: formData })
+      if (!res.ok) throw new Error(`El servidor no respondió correctamente (${res.status})`)
       const data = await res.json()
       const textoLimpio = (data.texto || '').trim()
       if (!textoLimpio) {
         alert('La IA no logró leer texto en la foto. Intenta con una foto más clara o escribe el material manualmente.')
       } else {
-        setNotasTraspaso(prev =>
-          prev ? `${prev}\n\n--- Lectura IA ---\n${textoLimpio}` : textoLimpio
-        )
+        setNotasTraspaso(prev => prev ? `${prev}\n\n--- Lectura IA ---\n${textoLimpio}` : textoLimpio)
       }
     } catch (err) {
       console.error('Error OCR backend:', err)
@@ -267,14 +240,9 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
   }
 
   const cerrarModalTraspaso = () => {
-    setMostrarTraspaso(false)
-    setArchivoTraspaso(null)
-    setNombreArchivoTraspaso('Ningún archivo seleccionado')
-    setNotasTraspaso('')
-    setOrigenTraspaso('')
-    setDestinoTraspaso('')
-    if (previewTraspaso) URL.revokeObjectURL(previewTraspaso)
-    setPreviewTraspaso(null)
+    setMostrarTraspaso(false); setArchivoTraspaso(null); setNombreArchivoTraspaso('Ningún archivo seleccionado');
+    setNotasTraspaso(''); setOrigenTraspaso(''); setDestinoTraspaso('');
+    if (previewTraspaso) URL.revokeObjectURL(previewTraspaso); setPreviewTraspaso(null);
   }
 
   const generarTraspaso = async (e) => {
@@ -293,10 +261,8 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     formData.append('sucursal_destino_id', destinoTraspaso)
     try {
       const respuesta = await fetch(`${API_URL}/pedidos/`, { method: 'POST', body: formData })
-      if (respuesta.ok) {
-        cerrarModalTraspaso()
-        obtenerDatosIniciales()
-      } else alert('Error al generar el traspaso.')
+      if (respuesta.ok) { cerrarModalTraspaso(); obtenerDatosIniciales() } 
+      else alert('Error al generar el traspaso.')
     } catch (error) { alert('Error de conexión.') }
     setEnviandoTraspaso(false)
   }
@@ -320,13 +286,8 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
   const registrarSucursal = async (e) => {
     e.preventDefault(); setCreandoSucursal(true)
     try {
-      const res = await fetch(`${API_URL}/sucursales/`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(nuevaSucursal)
-      })
-      if (res.ok) {
-        setNuevaSucursal({ nombre: '', direccion: '', telefono: '', tiene_produccion: false })
-        obtenerDatosIniciales()
-      }
+      const res = await fetch(`${API_URL}/sucursales/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(nuevaSucursal) })
+      if (res.ok) { setNuevaSucursal({ nombre: '', direccion: '', telefono: '', tiene_produccion: false }); obtenerDatosIniciales() }
     } catch (e) { alert('❌ Error al conectar') }
     setCreandoSucursal(false)
   }
@@ -334,9 +295,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
   const actualizarSucursal = async (e) => {
     e.preventDefault()
     try {
-      const res = await fetch(`${API_URL}/sucursales/${sucursalEditando.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sucursalEditando)
-      })
+      const res = await fetch(`${API_URL}/sucursales/${sucursalEditando.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sucursalEditando) })
       if (res.ok) { setSucursalEditando(null); obtenerDatosIniciales() }
     } catch (e) { alert('❌ Error') }
   }
@@ -344,14 +303,9 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
   const registrarEmpleado = async (e) => {
     e.preventDefault(); setCreandoUsuario(true)
     try {
-      const res = await fetch(`${API_URL}/usuarios/`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...nuevoEmpleado, sucursal_id: parseInt(nuevoEmpleado.sucursal_id) })
-      })
-      if (res.ok) {
-        setNuevoEmpleado({ nombre_completo: '', username: '', password: '', rol: 'ventas', sucursal_id: sucursales.length > 0 ? sucursales[0].id : '' })
-        obtenerDatosIniciales()
-      } else alert('❌ Verifica que el usuario no exista.')
+      const res = await fetch(`${API_URL}/usuarios/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...nuevoEmpleado, sucursal_id: parseInt(nuevoEmpleado.sucursal_id) }) })
+      if (res.ok) { setNuevoEmpleado({ nombre_completo: '', username: '', password: '', rol: 'ventas', sucursal_id: sucursales.length > 0 ? sucursales[0].id : '' }); obtenerDatosIniciales() } 
+      else alert('❌ Verifica que el usuario no exista.')
     } catch (e) { alert('❌ Error') }
     setCreandoUsuario(false)
   }
@@ -361,54 +315,36 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
     const datosAMandar = { ...empleadoEditando }
     if (!datosAMandar.password) delete datosAMandar.password
     try {
-      const res = await fetch(`${API_URL}/usuarios/${empleadoEditando.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datosAMandar)
-      })
+      const res = await fetch(`${API_URL}/usuarios/${empleadoEditando.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datosAMandar) })
       if (res.ok) { setEmpleadoEditando(null); obtenerDatosIniciales() }
     } catch (e) { alert('❌ Error') }
   }
 
-  const intentarCerrarSesion = () => {
-    setConfirmacion({ titulo: '¿Cerrar Sesión?', mensaje: '¿Estás segura de que deseas salir del Panel de Gerencia?', textoBoton: 'Sí, Salir', colorBoton: 'bg-red-600 hover:bg-red-700', accion: onCerrarSesion })
-  }
+  const intentarCerrarSesion = () => { setConfirmacion({ titulo: '¿Cerrar Sesión?', mensaje: '¿Estás segura de que deseas salir del Panel de Gerencia?', textoBoton: 'Sí, Salir', colorBoton: 'bg-red-600 hover:bg-red-700', accion: onCerrarSesion }) }
   const intentarEliminarEmpleado = (emp) => {
     setConfirmacion({
-      titulo: `¿Eliminar a ${emp.nombre_completo}?`,
-      mensaje: 'Esta persona perderá acceso al sistema de inmediato. Esta acción no se puede deshacer.',
-      textoBoton: 'Sí, Eliminar Personal', colorBoton: 'bg-red-600 hover:bg-red-700',
+      titulo: `¿Eliminar a ${emp.nombre_completo}?`, mensaje: 'Esta persona perderá acceso al sistema de inmediato. Esta acción no se puede deshacer.', textoBoton: 'Sí, Eliminar Personal', colorBoton: 'bg-red-600 hover:bg-red-700',
       accion: async () => {
         setConfirmacion(null)
-        try {
-          const res = await fetch(`${API_URL}/usuarios/${emp.id}`, { method: 'DELETE' })
-          if (res.ok) obtenerDatosIniciales(); else alert('❌ Error al eliminar.')
-        } catch (e) { alert('❌ Error de conexión') }
+        try { const res = await fetch(`${API_URL}/usuarios/${emp.id}`, { method: 'DELETE' }); if (res.ok) obtenerDatosIniciales(); else alert('❌ Error al eliminar.') } catch (e) { alert('❌ Error de conexión') }
       }
     })
   }
   const intentarEliminarSucursal = (suc) => {
     setConfirmacion({
-      titulo: `¿Eliminar la ${suc.nombre}?`,
-      mensaje: 'Asegúrate de que no haya empleados ni pedidos activos asignados a esta sucursal. Esta acción es irreversible.',
-      textoBoton: 'Sí, Eliminar Sucursal', colorBoton: 'bg-red-600 hover:bg-red-700',
+      titulo: `¿Eliminar la ${suc.nombre}?`, mensaje: 'Asegúrate de que no haya empleados ni pedidos activos asignados a esta sucursal. Esta acción es irreversible.', textoBoton: 'Sí, Eliminar Sucursal', colorBoton: 'bg-red-600 hover:bg-red-700',
       accion: async () => {
         setConfirmacion(null)
-        try {
-          const res = await fetch(`${API_URL}/sucursales/${suc.id}`, { method: 'DELETE' })
-          if (res.ok) obtenerDatosIniciales(); else alert('❌ Error. Es probable que aún tenga empleados o pedidos asignados.')
-        } catch (e) { alert('❌ Error de conexión') }
+        try { const res = await fetch(`${API_URL}/sucursales/${suc.id}`, { method: 'DELETE' }); if (res.ok) obtenerDatosIniciales(); else alert('❌ Error. Es probable que aún tenga empleados o pedidos asignados.') } catch (e) { alert('❌ Error de conexión') }
       }
     })
   }
   const intentarEnviarAprobacion = (e) => {
-    e.preventDefault()
-    const esAprobado = decision === 'Aprobado'
+    e.preventDefault(); const esAprobado = decision === 'Aprobado'
     setConfirmacion({
       titulo: esAprobado ? '¿Aprobar y Enviar a Taller?' : '¿Rechazar Pedido?',
-      mensaje: esAprobado
-        ? `¿Confirmas que la orden #${pedidoSeleccionado.id} está correcta y lista para producción?`
-        : `¿Confirmas que deseas cancelar y rechazar la orden #${pedidoSeleccionado.id}?`,
-      textoBoton: esAprobado ? 'Sí, Aprobar' : 'Sí, Rechazar',
-      colorBoton: esAprobado ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700',
+      mensaje: esAprobado ? `¿Confirmas que la orden #${pedidoSeleccionado.id} está correcta y lista para producción?` : `¿Confirmas que deseas cancelar y rechazar la orden #${pedidoSeleccionado.id}?`,
+      textoBoton: esAprobado ? 'Sí, Aprobar' : 'Sí, Rechazar', colorBoton: esAprobado ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700',
       accion: () => { setConfirmacion(null); ejecutarAprobacion() }
     })
   }
@@ -488,11 +424,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
 
           <div className="flex items-center gap-4 w-full sm:w-auto justify-between border-t border-slate-700 pt-5 sm:border-0 sm:pt-0 shrink-0">
             {permisoNotificaciones !== 'granted' && (
-              <button
-                onClick={solicitarPermisoNotificaciones}
-                className="bg-yellow-500 hover:bg-yellow-400 text-yellow-950 font-bold p-3 rounded-full shadow-lg transition active:scale-95 animate-bounce"
-                title="Activar Notificaciones de Gerencia"
-              >🔕</button>
+              <button onClick={solicitarPermisoNotificaciones} className="bg-yellow-500 hover:bg-yellow-400 text-yellow-950 font-bold p-3 rounded-full shadow-lg transition active:scale-95 animate-bounce" title="Activar Notificaciones">🔕</button>
             )}
             {permisoNotificaciones === 'granted' && (
               <div className="bg-slate-700 p-3 rounded-full shadow-inner text-yellow-400" title="Alertas de Gerencia Activadas">🔔</div>
@@ -521,31 +453,28 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
                     <p className="font-extrabold text-sm leading-tight">
                       {alertaBanner.cantidad === 1 ? '1 pedido espera tu autorización' : `${alertaBanner.cantidad} pedidos esperan tu autorización`}
                     </p>
-                    <p className="text-xs font-medium opacity-80 mt-0.5">Revísalos en la pestaña de Pedidos Activos.</p>
+                    <p className="text-xs font-medium opacity-80 mt-0.5">Revísalos en la pestaña "Por Aprobar".</p>
                   </>
                 )}
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => { setAlertaBanner(null); setVistaActiva('pedidos') }}
+                onClick={() => { setAlertaBanner(null); setVistaActiva('pendientes') }}
                 className={`font-bold text-xs px-3 py-2 rounded-xl min-h-[44px] transition active:scale-95 ${alertaBanner.tipo === 'retraso' ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-yellow-950/20 hover:bg-yellow-950/30 text-yellow-950'}`}
               >
                 Ver ahora
               </button>
-              <button
-                onClick={() => setAlertaBanner(null)}
-                className={`font-bold text-lg px-3 py-2 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center transition active:scale-95 ${alertaBanner.tipo === 'retraso' ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-yellow-950/20 hover:bg-yellow-950/30 text-yellow-950'}`}
-              >
-                &times;
-              </button>
+              <button onClick={() => setAlertaBanner(null)} className={`font-bold text-lg px-3 py-2 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center transition active:scale-95 ${alertaBanner.tipo === 'retraso' ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-yellow-950/20 hover:bg-yellow-950/30 text-yellow-950'}`}>&times;</button>
             </div>
           </div>
         )}
 
+        {/* 🆕 NUEVO: Menú Superior dividido en 2 */}
         <div className="flex gap-2 sm:gap-4 mb-8 bg-white p-2 rounded-xl border border-gray-200 shadow-sm overflow-x-auto scrollbar-thin">
           {[
-            { id: 'pedidos', label: '📋 Pedidos Activos' },
+            { id: 'pendientes', label: `⏳ Por Aprobar (${pedidosPendientes.length})` },
+            { id: 'activos', label: `⚙️ En Curso (${pedidosEnCurso.length})` },
             { id: 'historial', label: '🗂️ Historial' },
             { id: 'estadisticas', label: '📊 Estadísticas' },
             { id: 'personal', label: '👥 Personal' },
@@ -561,98 +490,118 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           ))}
         </div>
 
-        {/* VISTA 1: PEDIDOS ACTIVOS */}
-        {vistaActiva === 'pedidos' && (
+        {/* =========================================
+            🆕 VISTA UNIFICADA: PEDIDOS (Pendientes y En Curso)
+            ========================================= */}
+        {(vistaActiva === 'pendientes' || vistaActiva === 'activos') && (
           <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-6 md:p-8 border border-gray-100 animate-in fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-              <h2 className="text-xl sm:text-2xl font-extrabold" style={{WebkitFontSmoothing: 'antialiased', color: '#111827'}}>Control de Pedidos en Curso</h2>
+              <h2 className="text-xl sm:text-2xl font-extrabold" style={{WebkitFontSmoothing: 'antialiased', color: '#111827'}}>
+                {vistaActiva === 'pendientes' ? 'Autorizaciones Pendientes' : 'Control de Pedidos en Curso'}
+              </h2>
               <div className="flex gap-3 w-full sm:w-auto">
                 <button onClick={obtenerDatosIniciales} className="flex-1 sm:flex-none text-center text-sm bg-gray-100 text-gray-700 px-5 py-3 rounded-xl hover:bg-gray-200 transition font-semibold min-h-[44px]"> ↻ Actualizar </button>
                 <button onClick={() => setMostrarTraspaso(true)} className="flex-1 sm:flex-none text-center text-sm bg-purple-600 text-white px-5 py-3 rounded-xl font-bold shadow-md min-h-[44px]"> 📦 Nuevo Traspaso </button>
               </div>
             </div>
-            {cargando && pedidosActivos.length === 0 ? (
-              <div className="text-center py-20 flex flex-col items-center gap-4">
-                <div className="h-10 w-10 border-4 border-gray-200 border-t-gray-900 rounded-full animate-spin"></div>
-              </div>
-            ) : pedidosActivos.length === 0 ? (
-              <div className="text-center py-20 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                <span className="text-5xl block mb-3">✅</span>
-                <p className="text-gray-600 font-medium text-lg">No hay pedidos activos.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8">
-                {pedidosActivos.map((pedido) => (
-                  <div key={pedido.id} className={`bg-white rounded-2xl overflow-hidden shadow-sm transition-all duration-300 flex flex-col animate-in slide-in-from-bottom-2 ${pedido.estado === 'Pendiente' ? 'border-yellow-400 border-2 ring-4 ring-yellow-50' : (pedido.tipo_orden === 'Traspaso' ? 'border-purple-300 border-2 shadow-inner bg-purple-50' : 'border-slate-800 border-2 shadow-inner bg-slate-50/50')}`}>
-                    <div onClick={() => setImagenAmpliando(pedido.url_foto_ticket)} className="h-48 bg-gray-100 overflow-hidden relative group cursor-pointer border-b border-gray-200 shrink-0">
-                      <img src={pedido.url_foto_ticket} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Ticket" />
-                      <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition duration-300">
-                        <span className="text-white text-sm bg-gray-900/80 px-4 py-2 rounded-full font-bold shadow-lg flex items-center gap-2 backdrop-blur-sm">🔍 Ver Ticket</span>
-                      </div>
-                    </div>
-                    <div className="p-5 flex flex-col flex-grow">
-                      <div className="flex justify-between items-start mb-4 gap-2">
-                        <div>
-                          {pedido.estado === 'Pendiente' ? (
-                            <span className="text-sm font-black text-yellow-950 bg-yellow-100 px-2.5 py-1 rounded-md border-2 border-yellow-200 shrink-0">ID: #{pedido.id}</span>
-                          ) : (
-                            <span className="text-sm font-black text-gray-700 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200 shrink-0">ID: #{pedido.id}</span>
-                          )}
-                          {pedido.numero_ticket && <p className="text-sm font-black text-gray-900 mt-1.5 leading-tight">Folio: {pedido.numero_ticket}</p>}
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          {pedido.tipo_orden === 'Traspaso' && <span className="text-[10px] font-bold px-2.5 py-1 rounded-full shadow-inner border bg-purple-100 text-purple-900 border-purple-200">📦 TRASPASO</span>}
-                          <span className={`text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-wider shadow-inner flex items-center gap-1 ${pedido.estado === 'Pendiente' ? 'bg-yellow-100 text-yellow-950 border-2 border-yellow-200' : pedido.estado === 'Aprobado' ? 'bg-blue-100 text-blue-800 border-2 border-blue-200' : pedido.estado === 'En_Produccion' ? 'bg-orange-500 text-white border-2 border-orange-600 animate-pulse' : 'bg-green-500 text-white border-2 border-green-600'}`}>
-                            {pedido.estado === 'Pendiente' ? '⏳ Pendiente Gerencia' : pedido.estado === 'Aprobado' ? '⚙️ En Taller' : pedido.estado === 'En_Produccion' ? '🔥 Cortando' : pedido.estado === 'En_Logistica' ? '🚚 Listo' : pedido.estado}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mb-4">
-                        <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold mb-0.5">Vendido en:</p>
-                        <h4 className="font-bold text-gray-900 text-base leading-tight">{getNombreSucursal(pedido.sucursal_id)}</h4>
-                        <p className="text-[11px] text-gray-500 font-medium mt-1">Ingreso: 🕒 {formatearFechaYHora(pedido.fecha_creacion)}</p>
-                        {pedido.sucursal_destino_id && pedido.estado !== 'Pendiente' && (
-                          <div className="mt-3 bg-blue-50 border border-blue-100 rounded-lg p-2.5 flex items-center gap-2.5">
-                            <span className="text-lg">🏭</span>
-                            <div>
-                              <p className="text-[9px] text-blue-500 font-black uppercase tracking-widest">Asignado a taller:</p>
-                              <p className="text-sm font-bold text-blue-900 leading-tight">{getNombreSucursal(pedido.sucursal_destino_id)}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className={`p-4 rounded-xl flex-grow mb-5 overflow-hidden ${pedido.estado === 'Pendiente' ? 'bg-yellow-100 border-2 border-yellow-200' : 'bg-gray-50 border border-gray-100'}`}>
-                        <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap break-words line-clamp-3">{pedido.notas}</p>
-                      </div>
-                      <div className="mt-auto pt-4 border-t border-gray-100">
-                        {pedido.estado === 'Pendiente' ? (
-                          <button
-                            onClick={() => {
-                              setPedidoSeleccionado(pedido); setDecision('Aprobado')
-                              const sucursalesConTaller = sucursales.filter(s => s.tiene_produccion)
-                              setSucursalDestino(sucursalesConTaller.length > 0 ? sucursalesConTaller[0].id : '')
-                            }}
-                            className="w-full bg-yellow-400 hover:bg-yellow-500 text-yellow-950 font-extrabold py-3.5 rounded-xl transition shadow-md text-sm flex items-center justify-center gap-2 active:scale-95 border-2 border-yellow-300 min-h-[44px]"
-                          >
-                            <span>🔎</span> Revisar y Autorizar
-                          </button>
-                        ) : (
-                          <div className="flex flex-col gap-3">
-                            {(pedido.estado === 'Aprobado' || pedido.estado === 'En_Produccion') && (
-                              <div className="flex justify-between items-center bg-slate-800 text-white px-4 py-2.5 rounded-xl shadow-inner">
-                                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Tiempo en Taller:</span>
-                                <span className={`font-mono font-bold tracking-widest text-lg ${pedido.estado === 'En_Produccion' ? 'text-orange-400' : 'text-blue-300'}`}>{obtenerTiempoTranscurrido(pedido.fecha_aprobacion)}</span>
-                              </div>
-                            )}
-                            <button onClick={() => setPedidoDetalle(pedido)} className="w-full bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 rounded-xl transition text-sm border-2 border-slate-200 shadow-sm min-h-[44px]"> 📄 Ver Detalles Completos </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+            
+            {/* Determinamos qué lista iterar según la pestaña activa */}
+            {(() => {
+              const listaMostrada = vistaActiva === 'pendientes' ? pedidosPendientes : pedidosEnCurso;
+
+              if (cargando && listaMostrada.length === 0) {
+                return (
+                  <div className="text-center py-20 flex flex-col items-center gap-4">
+                    <div className="h-10 w-10 border-4 border-gray-200 border-t-gray-900 rounded-full animate-spin"></div>
                   </div>
-                ))}
-              </div>
-            )}
+                )
+              }
+              
+              if (listaMostrada.length === 0) {
+                return (
+                  <div className="text-center py-20 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                    <span className="text-5xl block mb-3">✅</span>
+                    <p className="text-gray-600 font-medium text-lg">
+                      {vistaActiva === 'pendientes' ? 'No hay autorizaciones pendientes.' : 'No hay pedidos en curso.'}
+                    </p>
+                  </div>
+                )
+              }
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8">
+                  {listaMostrada.map((pedido) => (
+                    <div key={pedido.id} className={`bg-white rounded-2xl overflow-hidden shadow-sm transition-all duration-300 flex flex-col animate-in slide-in-from-bottom-2 ${pedido.estado === 'Pendiente' ? 'border-yellow-400 border-2 ring-4 ring-yellow-50' : (pedido.tipo_orden === 'Traspaso' ? 'border-purple-300 border-2 shadow-inner bg-purple-50' : 'border-slate-800 border-2 shadow-inner bg-slate-50/50')}`}>
+                      <div onClick={() => setImagenAmpliando(pedido.url_foto_ticket)} className="h-48 bg-gray-100 overflow-hidden relative group cursor-pointer border-b border-gray-200 shrink-0">
+                        <img src={pedido.url_foto_ticket} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Ticket" />
+                        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition duration-300">
+                          <span className="text-white text-sm bg-gray-900/80 px-4 py-2 rounded-full font-bold shadow-lg flex items-center gap-2 backdrop-blur-sm">🔍 Ver Ticket</span>
+                        </div>
+                      </div>
+                      <div className="p-5 flex flex-col flex-grow">
+                        <div className="flex justify-between items-start mb-4 gap-2">
+                          <div>
+                            {pedido.estado === 'Pendiente' ? (
+                              <span className="text-sm font-black text-yellow-950 bg-yellow-100 px-2.5 py-1 rounded-md border-2 border-yellow-200 shrink-0">ID: #{pedido.id}</span>
+                            ) : (
+                              <span className="text-sm font-black text-gray-700 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200 shrink-0">ID: #{pedido.id}</span>
+                            )}
+                            {pedido.numero_ticket && <p className="text-sm font-black text-gray-900 mt-1.5 leading-tight">Folio: {pedido.numero_ticket}</p>}
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            {pedido.tipo_orden === 'Traspaso' && <span className="text-[10px] font-bold px-2.5 py-1 rounded-full shadow-inner border bg-purple-100 text-purple-900 border-purple-200">📦 TRASPASO</span>}
+                            <span className={`text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-wider shadow-inner flex items-center gap-1 ${pedido.estado === 'Pendiente' ? 'bg-yellow-100 text-yellow-950 border-2 border-yellow-200' : pedido.estado === 'Aprobado' ? 'bg-blue-100 text-blue-800 border-2 border-blue-200' : pedido.estado === 'En_Produccion' ? 'bg-orange-500 text-white border-2 border-orange-600 animate-pulse' : 'bg-green-500 text-white border-2 border-green-600'}`}>
+                              {pedido.estado === 'Pendiente' ? '⏳ Pendiente Gerencia' : pedido.estado === 'Aprobado' ? '⚙️ En Taller' : pedido.estado === 'En_Produccion' ? '🔥 Cortando' : pedido.estado === 'En_Logistica' ? '🚚 Listo' : pedido.estado}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="mb-4">
+                          <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold mb-0.5">Vendido en:</p>
+                          <h4 className="font-bold text-gray-900 text-base leading-tight">{getNombreSucursal(pedido.sucursal_id)}</h4>
+                          <p className="text-[11px] text-gray-500 font-medium mt-1">Ingreso: 🕒 {formatearFechaYHora(pedido.fecha_creacion)}</p>
+                          {pedido.sucursal_destino_id && pedido.estado !== 'Pendiente' && (
+                            <div className="mt-3 bg-blue-50 border border-blue-100 rounded-lg p-2.5 flex items-center gap-2.5">
+                              <span className="text-lg">🏭</span>
+                              <div>
+                                <p className="text-[9px] text-blue-500 font-black uppercase tracking-widest">Asignado a taller:</p>
+                                <p className="text-sm font-bold text-blue-900 leading-tight">{getNombreSucursal(pedido.sucursal_destino_id)}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className={`p-4 rounded-xl flex-grow mb-5 overflow-hidden ${pedido.estado === 'Pendiente' ? 'bg-yellow-100 border-2 border-yellow-200' : 'bg-gray-50 border border-gray-100'}`}>
+                          <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap break-words line-clamp-3">{pedido.notas}</p>
+                        </div>
+                        <div className="mt-auto pt-4 border-t border-gray-100">
+                          {pedido.estado === 'Pendiente' ? (
+                            <button
+                              onClick={() => {
+                                setPedidoSeleccionado(pedido); setDecision('Aprobado')
+                                const sucursalesConTaller = sucursales.filter(s => s.tiene_produccion)
+                                setSucursalDestino(sucursalesConTaller.length > 0 ? sucursalesConTaller[0].id : '')
+                              }}
+                              className="w-full bg-yellow-400 hover:bg-yellow-500 text-yellow-950 font-extrabold py-3.5 rounded-xl transition shadow-md text-sm flex items-center justify-center gap-2 active:scale-95 border-2 border-yellow-300 min-h-[44px]"
+                            >
+                              <span>🔎</span> Revisar y Autorizar
+                            </button>
+                          ) : (
+                            <div className="flex flex-col gap-3">
+                              {(pedido.estado === 'Aprobado' || pedido.estado === 'En_Produccion') && (
+                                <div className="flex justify-between items-center bg-slate-800 text-white px-4 py-2.5 rounded-xl shadow-inner">
+                                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Tiempo en Taller:</span>
+                                  <span className={`font-mono font-bold tracking-widest text-lg ${pedido.estado === 'En_Produccion' ? 'text-orange-400' : 'text-blue-300'}`}>{obtenerTiempoTranscurrido(pedido.fecha_aprobacion)}</span>
+                                </div>
+                              )}
+                              <button onClick={() => setPedidoDetalle(pedido)} className="w-full bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 rounded-xl transition text-sm border-2 border-slate-200 shadow-sm min-h-[44px]"> 📄 Ver Detalles Completos </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         )}
 
@@ -914,7 +863,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
           MODALES
           ============================================== */}
 
-      {/* 🆕 MODAL DE TRASPASO — REDISEÑADO con cámara nativa + OCR */}
+      {/* MODAL DE TRASPASO */}
       {mostrarTraspaso && (
         <div className="fixed inset-0 bg-gray-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in">
           <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden max-h-[90vh] flex flex-col">
@@ -924,70 +873,27 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
             </div>
             <form onSubmit={generarTraspaso} className="p-5 sm:p-8 space-y-6 overflow-y-auto overscroll-contain">
 
-              {/* 🆕 INPUTS OCULTOS — uno con cámara, otro con galería */}
-              <input
-                ref={inputCamaraRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleFileTraspaso}
-                className="hidden"
-              />
-              <input
-                ref={inputGaleriaRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileTraspaso}
-                className="hidden"
-              />
+              <input ref={inputCamaraRef} type="file" accept="image/*" capture="environment" onChange={handleFileTraspaso} className="hidden" />
+              <input ref={inputGaleriaRef} type="file" accept="image/*" onChange={handleFileTraspaso} className="hidden" />
 
-              {/* 🆕 ZONA DE FOTO — con preview + dos botones (cámara/galería) */}
               <div>
                 <label className="block text-sm font-semibold text-gray-800 mb-2 ml-1">Vale de salida o evidencia</label>
-
                 {previewTraspaso ? (
-                  // Si ya hay foto, mostramos el preview
                   <div className="relative rounded-2xl overflow-hidden border-2 border-purple-200 bg-gray-50">
                     <img src={previewTraspaso} alt="Preview vale" className="w-full max-h-64 object-contain bg-gray-100" />
                     <div className="p-3 bg-white border-t border-gray-100 flex flex-col sm:flex-row gap-2">
-                      <button
-                        type="button"
-                        onClick={() => inputCamaraRef.current?.click()}
-                        className="flex-1 bg-purple-100 hover:bg-purple-200 text-purple-900 font-bold py-2.5 rounded-xl transition min-h-[44px] flex items-center justify-center gap-2 text-sm"
-                      >
-                        🔄 Tomar otra
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (previewTraspaso) URL.revokeObjectURL(previewTraspaso)
-                          setPreviewTraspaso(null)
-                          setArchivoTraspaso(null)
-                          setNombreArchivoTraspaso('Ningún archivo seleccionado')
-                        }}
-                        className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2.5 rounded-xl transition min-h-[44px] flex items-center justify-center gap-2 text-sm"
-                      >
-                        🗑️ Quitar
-                      </button>
+                      <button type="button" onClick={() => inputCamaraRef.current?.click()} className="flex-1 bg-purple-100 hover:bg-purple-200 text-purple-900 font-bold py-2.5 rounded-xl transition min-h-[44px] flex items-center justify-center gap-2 text-sm"> 🔄 Tomar otra </button>
+                      <button type="button" onClick={() => { if (previewTraspaso) URL.revokeObjectURL(previewTraspaso); setPreviewTraspaso(null); setArchivoTraspaso(null); setNombreArchivoTraspaso('Ningún archivo seleccionado') }} className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2.5 rounded-xl transition min-h-[44px] flex items-center justify-center gap-2 text-sm"> 🗑️ Quitar </button>
                     </div>
                   </div>
                 ) : (
-                  // Si NO hay foto, mostramos los dos botones grandes
                   <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => inputCamaraRef.current?.click()}
-                      className="border-2 border-dashed border-purple-300 hover:border-purple-500 hover:bg-purple-50 rounded-2xl p-5 flex flex-col items-center justify-center gap-2 transition active:scale-95 min-h-[120px]"
-                    >
+                    <button type="button" onClick={() => inputCamaraRef.current?.click()} className="border-2 border-dashed border-purple-300 hover:border-purple-500 hover:bg-purple-50 rounded-2xl p-5 flex flex-col items-center justify-center gap-2 transition active:scale-95 min-h-[120px]">
                       <span className="text-4xl">📸</span>
                       <span className="font-bold text-purple-900 text-sm">Tomar foto</span>
                       <span className="text-[11px] text-gray-500">Abre la cámara</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => inputGaleriaRef.current?.click()}
-                      className="border-2 border-dashed border-gray-300 hover:border-gray-500 hover:bg-gray-50 rounded-2xl p-5 flex flex-col items-center justify-center gap-2 transition active:scale-95 min-h-[120px]"
-                    >
+                    <button type="button" onClick={() => inputGaleriaRef.current?.click()} className="border-2 border-dashed border-gray-300 hover:border-gray-500 hover:bg-gray-50 rounded-2xl p-5 flex flex-col items-center justify-center gap-2 transition active:scale-95 min-h-[120px]">
                       <span className="text-4xl">🖼️</span>
                       <span className="font-bold text-gray-700 text-sm">De galería</span>
                       <span className="text-[11px] text-gray-500">Buscar en el celular</span>
@@ -996,7 +902,6 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
                 )}
               </div>
 
-              {/* 🆕 BOTÓN DE OCR — solo aparece cuando ya hay foto */}
               {archivoTraspaso && (
                 <div className="bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-200 rounded-2xl p-4">
                   <div className="flex items-start gap-3 mb-3">
@@ -1006,12 +911,7 @@ function PanelDuena({ usuarioActual, onCerrarSesion }) {
                       <p className="text-xs text-blue-700 font-medium mt-0.5">La IA puede leer tu nota y rellenar el material automáticamente.</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={leerMaterialConIA}
-                    disabled={leyendoOCR}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow transition min-h-[44px] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-wait"
-                  >
+                  <button type="button" onClick={leerMaterialConIA} disabled={leyendoOCR} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow transition min-h-[44px] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-wait">
                     {leyendoOCR ? (
                       <>
                         <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
